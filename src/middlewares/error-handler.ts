@@ -1,9 +1,10 @@
 import type { NextFunction, Request, Response } from 'express';
 import { ZodError } from 'zod';
+import { log } from '../logging/logger.js';
 import { HttpError } from './http-error.js';
 
 function publicMessage(statusCode: number, message: string): void {
-  console.error(JSON.stringify({ statusCode, message }));
+  log(statusCode >= 500 ? 'error' : 'warn', message, { statusCode });
 }
 
 export function errorHandler(

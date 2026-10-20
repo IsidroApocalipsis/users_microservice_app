@@ -28,6 +28,16 @@ npm test           # pruebas de cifrado y login
 npm run seed       # crea el primer ADMIN si el email no existe
 ```
 
+## Logs
+
+Cada respuesta incluye el header `x-request-id`. Si envías un UUID en ese header, se reutiliza. Si falta o no es un UUID, el servidor genera uno. El cuerpo de error no cambia.
+
+Al terminar la petición se escribe una línea JSON. Un `4xx` queda en `warn` y un `5xx` en `error`. No se registran el body, `Authorization`, la query ni el stack.
+
+```json
+{"time":"2026-10-19T00:00:00.000Z","level":"info","message":"request completed","correlationId":"8b6c1c2e-3f4a-4d5e-9a7b-1c2d3e4f5a6b","method":"GET","path":"/health","statusCode":200,"durationMs":2}
+```
+
 ## Email cifrado y búsqueda
 
 `email`, `telefono` y `curp` se guardan con AES-256-GCM. Cada cifrado lleva un IV aleatorio, así que el mismo email produce un texto distinto cada vez. Ese valor no sirve para buscar ni para un índice único.
