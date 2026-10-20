@@ -27,6 +27,8 @@ export type UserDocument = {
   updatedAt: Date;
 };
 
+export type UserUpdate = Partial<Omit<UserDocument, '_id' | 'createdAt'>>;
+
 export type PublicUser = {
   id: string;
   nombre: string;

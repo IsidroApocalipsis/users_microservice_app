@@ -101,6 +101,32 @@ curl -s http://localhost:3000/users/<id> \
 
 Respuesta `200`: los datos descifrados, sin `password`. Si el id no existe, responde `404`. Si un usuario pide el id de otra persona, responde `403`.
 
+## Actualización parcial
+
+Un `ADMIN` puede actualizar cualquier usuario. Un `USER` solo el id de su token. Los campos que no envías no cambian. `telefono` y `curp` se borran si envías `null`. Un body vacío responde `400`.
+
+Un `USER` no puede enviar `rol`. Un `ADMIN` sí puede cambiarlo.
+
+```bash
+curl -s -X PATCH http://localhost:3000/users/<id> \
+  -H 'Content-Type: application/json' \
+  -H 'Authorization: Bearer <token>' \
+  -d '{"nombre":"Ana Lopez"}'
+```
+
+Respuesta `200`: el usuario actualizado, sin `password`. Si el email pertenece a otra persona, responde `409`. Si el id no existe, responde `404`. Si un usuario pide el id de otra persona, responde `403`.
+
+## Baja
+
+Solo `ADMIN`. La baja es lógica: el documento no se borra y `estatus` pasa a `INACTIVO`. El login de ese usuario responde `403`. El `emailHash` sigue ocupado, así que ese email no se puede volver a registrar. Un `ADMIN` puede reactivarlo con `PATCH` y `"estatus":"ACTIVO"`.
+
+```bash
+curl -s -X DELETE http://localhost:3000/users/<id> \
+  -H 'Authorization: Bearer <token>'
+```
+
+Respuesta `200`: el usuario con `estatus` `INACTIVO`, sin `password`. Si ya estaba inactivo, la respuesta es la misma y no se reescribe. Si el id no existe, responde `404`.
+
 ## Health check
 
 ```bash

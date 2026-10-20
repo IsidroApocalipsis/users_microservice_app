@@ -1,6 +1,6 @@
 import { MongoServerError, ObjectId } from 'mongodb';
 import { getUsersCollection } from '../db/client.js';
-import type { UserDocument, UserStatus } from './user.model.js';
+import type { UserDocument, UserStatus, UserUpdate } from './user.model.js';
 
 export type UserListQuery = {
   estatus?: UserStatus;
@@ -54,6 +54,27 @@ export async function insertUser(
   }
 
   return user;
+}
+
+export async function updateUser(
+  id: string,
+  changes: UserUpdate,
+): Promise<UserDocument | null> {
+  const collection = await getUsersCollection();
+
+  try {
+    return await collection.findOneAndUpdate(
+      { _id: new ObjectId(id) },
+      { $set: changes },
+      { returnDocument: 'after' },
+    );
+  } catch (error) {
+    if (error instanceof MongoServerError && error.code === 11000) {
+      throw new DuplicateEmailError();
+    }
+
+    throw error;
+  }
 }
 
 function statusFilter(estatus?: UserStatus): { estatus?: UserStatus } {

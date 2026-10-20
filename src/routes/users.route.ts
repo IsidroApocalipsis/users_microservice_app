@@ -12,11 +12,14 @@ import {
   findById,
   insertUser,
   listUsers,
+  updateUser,
 } from '../users/user.repository.js';
 import {
   createUserSchema,
   listUsersQuerySchema,
+  updateUserSchema,
   type CreateUserInput,
+  type UpdateUserInput,
 } from '../users/user.schema.js';
 
 const userService = createUserService({
@@ -24,6 +27,7 @@ const userService = createUserService({
   findById,
   insertUser,
   listUsers,
+  updateUser,
 });
 
 export const usersRouter = Router();
@@ -74,3 +78,44 @@ usersRouter.get('/:id', requireAuth, async (req, res, next) => {
     next(error);
   }
 });
+
+usersRouter.patch(
+  '/:id',
+  requireAuth,
+  validateBody(updateUserSchema),
+  async (req, res, next) => {
+    try {
+      const auth = (req as AuthenticatedRequest).auth;
+
+      if (!auth) {
+        next(new HttpError(401, 'Unauthorized'));
+        return;
+      }
+
+      const id = req.params.id;
+      const user = await userService.update(
+        auth,
+        Array.isArray(id) ? id[0] : id,
+        req.body as UpdateUserInput,
+      );
+      res.status(200).json(user);
+    } catch (error) {
+      next(error);
+    }
+  },
+);
+
+usersRouter.delete(
+  '/:id',
+  requireAuth,
+  requireRole('ADMIN'),
+  async (req, res, next) => {
+    try {
+      const id = req.params.id;
+      const user = await userService.deactivate(Array.isArray(id) ? id[0] : id);
+      res.status(200).json(user);
+    } catch (error) {
+      next(error);
+    }
+  },
+);

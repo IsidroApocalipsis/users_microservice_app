@@ -74,15 +74,40 @@ export const createUserSchema = z.object({
   rol: rolSchema.optional(),
 });
 
-export const updateUserSchema = z.object({
-  nombre: nombreSchema.optional(),
-  email: emailSchema.optional(),
-  telefono: telefonoSchema,
-  curp: curpSchema,
-  password: passwordSchema.optional(),
-  rol: rolSchema.optional(),
-  estatus: z.enum(USER_STATUSES).optional(),
-});
+const clearableTelefonoSchema = z.preprocess(
+  blankToUndefined,
+  z
+    .string()
+    .regex(/^\d{10}$/)
+    .nullable()
+    .optional(),
+);
+
+const clearableCurpSchema = z.preprocess(
+  blankToUndefined,
+  z
+    .string()
+    .trim()
+    .toUpperCase()
+    .regex(CURP_PATTERN)
+    .nullable()
+    .optional(),
+);
+
+export const updateUserSchema = z
+  .object({
+    nombre: nombreSchema.optional(),
+    email: emailSchema.optional(),
+    telefono: clearableTelefonoSchema,
+    curp: clearableCurpSchema,
+    password: passwordSchema.optional(),
+    rol: rolSchema.optional(),
+    estatus: z.enum(USER_STATUSES).optional(),
+  })
+  .refine(
+    (value) => Object.values(value).some((field) => field !== undefined),
+    'At least one field is required',
+  );
 
 export type ListUsersQuery = z.infer<typeof listUsersQuerySchema>;
 export type LoginUserInput = z.infer<typeof loginUserSchema>;

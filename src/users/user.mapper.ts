@@ -1,6 +1,6 @@
 import { decryptField, encryptField, hashEmail, hashPassword } from '../crypto/encryption.js';
-import type { CreateUserInput } from './user.schema.js';
-import type { PublicUser, UserDocument } from './user.model.js';
+import type { PublicUser, UserDocument, UserUpdate } from './user.model.js';
+import type { CreateUserInput, UpdateUserInput } from './user.schema.js';
 
 type NewUserDocument = Omit<UserDocument, '_id'>;
 
@@ -20,6 +20,44 @@ export async function toUserDocument(
     createdAt: now,
     updatedAt: now,
   };
+}
+
+export async function toUserChanges(
+  input: UpdateUserInput,
+  now = new Date(),
+): Promise<UserUpdate> {
+  const changes: UserUpdate = { updatedAt: now };
+
+  if (input.nombre !== undefined) {
+    changes.nombre = input.nombre;
+  }
+
+  if (input.email !== undefined) {
+    changes.email = encryptField(input.email);
+    changes.emailHash = hashEmail(input.email);
+  }
+
+  if (input.telefono !== undefined) {
+    changes.telefono = input.telefono ? encryptField(input.telefono) : null;
+  }
+
+  if (input.curp !== undefined) {
+    changes.curp = input.curp ? encryptField(input.curp) : null;
+  }
+
+  if (input.password !== undefined) {
+    changes.passwordHash = await hashPassword(input.password);
+  }
+
+  if (input.rol !== undefined) {
+    changes.rol = input.rol;
+  }
+
+  if (input.estatus !== undefined) {
+    changes.estatus = input.estatus;
+  }
+
+  return changes;
 }
 
 export function toPublicUser(document: UserDocument): PublicUser {

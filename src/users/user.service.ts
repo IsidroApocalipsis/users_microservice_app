@@ -2,14 +2,14 @@ import { ObjectId } from 'mongodb';
 import type { AccessTokenPayload } from '../auth/token.js';
 import { hashEmail } from '../crypto/encryption.js';
 import { HttpError } from '../middlewares/http-error.js';
-import { toPublicUser, toUserDocument } from './user.mapper.js';
-import type { PublicUser, UserDocument } from './user.model.js';
+import { toPublicUser, toUserChanges, toUserDocument } from './user.mapper.js';
+import type { PublicUser, UserDocument, UserUpdate } from './user.model.js';
 import {
   DuplicateEmailError,
   type UserListQuery,
   type UserPage,
 } from './user.repository.js';
-import type { CreateUserInput, ListUsersQuery } from './user.schema.js';
+import type { CreateUserInput, ListUsersQuery, UpdateUserInput } from './user.schema.js';
 
 export type UserList = {
   users: PublicUser[];
@@ -23,6 +23,7 @@ export type UserStore = {
   findById(id: string): Promise<UserDocument | null>;
   insertUser(document: Omit<UserDocument, '_id'>): Promise<UserDocument>;
   listUsers(query: UserListQuery): Promise<UserPage>;
+  updateUser(id: string, changes: UserUpdate): Promise<UserDocument | null>;
 };
 
 export function createUserService(users: UserStore) {
@@ -77,6 +78,81 @@ export function createUserService(users: UserStore) {
         limit: query.limit,
         total: page.total,
       };
+    },
+
+    async update(
+      actor: AccessTokenPayload,
+      id: string,
+      input: UpdateUserInput,
+    ): Promise<PublicUser> {
+      if (actor.rol !== 'ADMIN' && actor.sub !== id) {
+        throw new HttpError(403, 'Forbidden');
+      }
+
+      if (actor.rol !== 'ADMIN' && input.rol !== undefined) {
+        throw new HttpError(403, 'Cannot change role');
+      }
+
+      if (!ObjectId.isValid(id)) {
+        throw new HttpError(400, 'Invalid user id');
+      }
+
+      const current = await users.findById(id);
+
+      if (!current) {
+        throw new HttpError(404, 'User not found');
+      }
+
+      if (input.email !== undefined) {
+        const existing = await users.findByEmailHash(hashEmail(input.email));
+
+        if (existing && !existing._id.equals(current._id)) {
+          throw new HttpError(409, 'Email already exists');
+        }
+      }
+
+      try {
+        const updated = await users.updateUser(id, await toUserChanges(input));
+
+        if (!updated) {
+          throw new HttpError(404, 'User not found');
+        }
+
+        return toPublicUser(updated);
+      } catch (error) {
+        if (error instanceof DuplicateEmailError) {
+          throw new HttpError(409, 'Email already exists');
+        }
+
+        throw error;
+      }
+    },
+
+    async deactivate(id: string): Promise<PublicUser> {
+      if (!ObjectId.isValid(id)) {
+        throw new HttpError(400, 'Invalid user id');
+      }
+
+      const current = await users.findById(id);
+
+      if (!current) {
+        throw new HttpError(404, 'User not found');
+      }
+
+      if (current.estatus === 'INACTIVO') {
+        return toPublicUser(current);
+      }
+
+      const updated = await users.updateUser(id, {
+        estatus: 'INACTIVO',
+        updatedAt: new Date(),
+      });
+
+      if (!updated) {
+        throw new HttpError(404, 'User not found');
+      }
+
+      return toPublicUser(updated);
     },
   };
 }

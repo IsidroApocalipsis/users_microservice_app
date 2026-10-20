@@ -13,11 +13,30 @@ process.env.JWT_SECRET ??= randomBytes(32).toString('hex');
 const { createUserService } = await import('./user.service.js');
 const { DuplicateEmailError } = await import('./user.repository.js');
 const { encryptField } = await import('../crypto/encryption.js');
+const { updateUserSchema } = await import('./user.schema.js');
 
 const missingStoreMethods = {
   findById: async () => null,
   listUsers: async () => ({ users: [], total: 0 }),
+  updateUser: async () => null,
 };
+
+function storedUser(overrides: Partial<UserDocument> = {}): UserDocument {
+  return {
+    _id: new ObjectId(),
+    nombre: 'Ana Perez',
+    email: encryptField('ana@example.com'),
+    emailHash: 'hash',
+    telefono: encryptField('5512345678'),
+    curp: null,
+    passwordHash: 'hashed',
+    rol: 'USER',
+    estatus: 'ACTIVO',
+    createdAt: new Date('2026-01-01T00:00:00.000Z'),
+    updatedAt: new Date('2026-01-01T00:00:00.000Z'),
+    ...overrides,
+  };
+}
 
 const input = {
   nombre: 'Ana Perez',
@@ -241,5 +260,352 @@ describe('list users', () => {
     await service.list({ page: 2, limit: 10, estatus: 'ACTIVO' });
 
     assert.deepEqual(received, { estatus: 'ACTIVO', skip: 10, limit: 10 });
+  });
+});
+
+describe('update user schema', () => {
+  it('rejects an empty patch', () => {
+    const result = updateUserSchema.safeParse({});
+
+    assert.equal(result.success, false);
+  });
+
+  it('clears telefono with null and ignores a blank string when another field is present', () => {
+    const cleared = updateUserSchema.parse({ telefono: null });
+    const ignored = updateUserSchema.parse({ nombre: 'Ana', telefono: '' });
+
+    assert.equal(cleared.telefono, null);
+    assert.equal(ignored.nombre, 'Ana');
+    assert.equal(ignored.telefono, undefined);
+  });
+});
+
+describe('update user', () => {
+  it('lets an admin change another user without returning secrets', async () => {
+    const current = storedUser();
+    const service = createUserService({
+      ...missingStoreMethods,
+      findByEmailHash: async () => null,
+      insertUser: async (document) => ({ ...document, _id: new ObjectId() }),
+      findById: async () => current,
+      updateUser: async (_id, changes) => ({ ...current, ...changes }),
+    });
+
+    const updated = await service.update(
+      { sub: new ObjectId().toHexString(), rol: 'ADMIN' },
+      current._id.toHexString(),
+      { nombre: 'Ana Lopez' },
+    );
+
+    assert.equal(updated.nombre, 'Ana Lopez');
+    assert.equal(updated.email, 'ana@example.com');
+    assert.equal('password' in updated, false);
+    assert.equal('passwordHash' in updated, false);
+    assert.equal('emailHash' in updated, false);
+  });
+
+  it('lets a user change their own email', async () => {
+    const current = storedUser();
+    let wroteEmail = false;
+    const service = createUserService({
+      ...missingStoreMethods,
+      findByEmailHash: async () => null,
+      insertUser: async (document) => ({ ...document, _id: new ObjectId() }),
+      findById: async () => current,
+      updateUser: async (_id, changes) => {
+        wroteEmail = changes.emailHash !== undefined;
+        return { ...current, ...changes };
+      },
+    });
+
+    const updated = await service.update(
+      { sub: current._id.toHexString(), rol: 'USER' },
+      current._id.toHexString(),
+      { email: 'ana.nueva@example.com' },
+    );
+
+    assert.equal(updated.email, 'ana.nueva@example.com');
+    assert.equal(wroteEmail, true);
+  });
+
+  it('returns 403 when a user sends a role and does not write', async () => {
+    let lookedUp = false;
+    let wrote = false;
+    const id = new ObjectId().toHexString();
+    const service = createUserService({
+      ...missingStoreMethods,
+      findByEmailHash: async () => null,
+      insertUser: async (document) => ({ ...document, _id: new ObjectId() }),
+      findById: async () => {
+        lookedUp = true;
+        return null;
+      },
+      updateUser: async () => {
+        wrote = true;
+        return null;
+      },
+    });
+
+    await assert.rejects(
+      () => service.update({ sub: id, rol: 'USER' }, id, { rol: 'ADMIN' }),
+      (error: unknown) => {
+        assert.ok(error instanceof HttpError);
+        assert.equal(error.statusCode, 403);
+        assert.equal(error.message, 'Cannot change role');
+        assert.equal(lookedUp, false);
+        assert.equal(wrote, false);
+        return true;
+      },
+    );
+  });
+
+  it('returns 403 when a user updates another id without a lookup', async () => {
+    let lookedUp = false;
+    const service = createUserService({
+      ...missingStoreMethods,
+      findByEmailHash: async () => null,
+      insertUser: async (document) => ({ ...document, _id: new ObjectId() }),
+      findById: async () => {
+        lookedUp = true;
+        return null;
+      },
+    });
+
+    await assert.rejects(
+      () =>
+        service.update(
+          { sub: new ObjectId().toHexString(), rol: 'USER' },
+          new ObjectId().toHexString(),
+          { nombre: 'Otra' },
+        ),
+      (error: unknown) => {
+        assert.ok(error instanceof HttpError);
+        assert.equal(error.statusCode, 403);
+        assert.equal(error.message, 'Forbidden');
+        assert.equal(lookedUp, false);
+        return true;
+      },
+    );
+  });
+
+  it('returns 400 when the id is not an ObjectId', async () => {
+    const service = createUserService({
+      ...missingStoreMethods,
+      findByEmailHash: async () => null,
+      insertUser: async (document) => ({ ...document, _id: new ObjectId() }),
+    });
+
+    await assert.rejects(
+      () => service.update({ sub: 'admin', rol: 'ADMIN' }, 'not-an-id', { nombre: 'Ana' }),
+      (error: unknown) => {
+        assert.ok(error instanceof HttpError);
+        assert.equal(error.statusCode, 400);
+        return true;
+      },
+    );
+  });
+
+  it('returns 404 when the id does not exist', async () => {
+    let wrote = false;
+    const service = createUserService({
+      ...missingStoreMethods,
+      findByEmailHash: async () => null,
+      insertUser: async (document) => ({ ...document, _id: new ObjectId() }),
+      findById: async () => null,
+      updateUser: async () => {
+        wrote = true;
+        return null;
+      },
+    });
+
+    await assert.rejects(
+      () =>
+        service.update(
+          { sub: new ObjectId().toHexString(), rol: 'ADMIN' },
+          new ObjectId().toHexString(),
+          { nombre: 'Ana' },
+        ),
+      (error: unknown) => {
+        assert.ok(error instanceof HttpError);
+        assert.equal(error.statusCode, 404);
+        assert.equal(wrote, false);
+        return true;
+      },
+    );
+  });
+
+  it('returns 409 when the email belongs to someone else', async () => {
+    const current = storedUser();
+    let wrote = false;
+    const service = createUserService({
+      ...missingStoreMethods,
+      findByEmailHash: async () => storedUser(),
+      insertUser: async (document) => ({ ...document, _id: new ObjectId() }),
+      findById: async () => current,
+      updateUser: async () => {
+        wrote = true;
+        return current;
+      },
+    });
+
+    await assert.rejects(
+      () =>
+        service.update(
+          { sub: current._id.toHexString(), rol: 'USER' },
+          current._id.toHexString(),
+          { email: 'ocupado@example.com' },
+        ),
+      (error: unknown) => {
+        assert.ok(error instanceof HttpError);
+        assert.equal(error.statusCode, 409);
+        assert.equal(wrote, false);
+        return true;
+      },
+    );
+  });
+
+  it('keeps the update when the email already belongs to the same user', async () => {
+    const current = storedUser();
+    let wrote = false;
+    const service = createUserService({
+      ...missingStoreMethods,
+      findByEmailHash: async () => current,
+      insertUser: async (document) => ({ ...document, _id: new ObjectId() }),
+      findById: async () => current,
+      updateUser: async (_id, changes) => {
+        wrote = true;
+        return { ...current, ...changes };
+      },
+    });
+
+    const updated = await service.update(
+      { sub: current._id.toHexString(), rol: 'USER' },
+      current._id.toHexString(),
+      { email: 'ana@example.com' },
+    );
+
+    assert.equal(updated.email, 'ana@example.com');
+    assert.equal(wrote, true);
+  });
+
+  it('stores a password hash and clears telefono', async () => {
+    const current = storedUser();
+    let changesSeen: { passwordHash?: string; telefono?: unknown } = {};
+    const service = createUserService({
+      ...missingStoreMethods,
+      findByEmailHash: async () => null,
+      insertUser: async (document) => ({ ...document, _id: new ObjectId() }),
+      findById: async () => current,
+      updateUser: async (_id, changes) => {
+        changesSeen = changes;
+        return {
+          ...current,
+          ...changes,
+          telefono: changes.telefono === undefined ? current.telefono : changes.telefono,
+        };
+      },
+    });
+
+    const updated = await service.update(
+      { sub: current._id.toHexString(), rol: 'USER' },
+      current._id.toHexString(),
+      { password: 'nueva1234', telefono: null, estatus: 'INACTIVO' },
+    );
+
+    assert.equal(updated.telefono, null);
+    assert.equal(updated.estatus, 'INACTIVO');
+    assert.equal(changesSeen.telefono, null);
+    assert.match(changesSeen.passwordHash ?? '', /^\$2[aby]\$/);
+    assert.notEqual(changesSeen.passwordHash, 'nueva1234');
+    assert.equal('password' in updated, false);
+  });
+});
+
+describe('deactivate user', () => {
+  it('marks an active user inactive without returning secrets', async () => {
+    const current = storedUser();
+    let changesSeen: { estatus?: string; updatedAt?: Date } = {};
+    const service = createUserService({
+      ...missingStoreMethods,
+      findByEmailHash: async () => null,
+      insertUser: async (document) => ({ ...document, _id: new ObjectId() }),
+      findById: async () => current,
+      updateUser: async (_id, changes) => {
+        changesSeen = changes;
+        return { ...current, ...changes };
+      },
+    });
+
+    const deactivated = await service.deactivate(current._id.toHexString());
+
+    assert.equal(deactivated.estatus, 'INACTIVO');
+    assert.equal(deactivated.email, 'ana@example.com');
+    assert.equal(deactivated.createdAt.toISOString(), current.createdAt.toISOString());
+    assert.equal(changesSeen.estatus, 'INACTIVO');
+    assert.ok(changesSeen.updatedAt instanceof Date);
+    assert.equal('password' in deactivated, false);
+    assert.equal('passwordHash' in deactivated, false);
+    assert.equal('emailHash' in deactivated, false);
+  });
+
+  it('returns an inactive user without writing again', async () => {
+    const current = storedUser({ estatus: 'INACTIVO' });
+    let wrote = false;
+    const service = createUserService({
+      ...missingStoreMethods,
+      findByEmailHash: async () => null,
+      insertUser: async (document) => ({ ...document, _id: new ObjectId() }),
+      findById: async () => current,
+      updateUser: async () => {
+        wrote = true;
+        return current;
+      },
+    });
+
+    const deactivated = await service.deactivate(current._id.toHexString());
+
+    assert.equal(deactivated.estatus, 'INACTIVO');
+    assert.equal(wrote, false);
+  });
+
+  it('returns 404 when the id does not exist', async () => {
+    const service = createUserService({
+      ...missingStoreMethods,
+      findByEmailHash: async () => null,
+      insertUser: async (document) => ({ ...document, _id: new ObjectId() }),
+      findById: async () => null,
+    });
+
+    await assert.rejects(
+      () => service.deactivate(new ObjectId().toHexString()),
+      (error: unknown) => {
+        assert.ok(error instanceof HttpError);
+        assert.equal(error.statusCode, 404);
+        return true;
+      },
+    );
+  });
+
+  it('returns 400 when the id is not an ObjectId', async () => {
+    let lookedUp = false;
+    const service = createUserService({
+      ...missingStoreMethods,
+      findByEmailHash: async () => null,
+      insertUser: async (document) => ({ ...document, _id: new ObjectId() }),
+      findById: async () => {
+        lookedUp = true;
+        return null;
+      },
+    });
+
+    await assert.rejects(
+      () => service.deactivate('not-an-id'),
+      (error: unknown) => {
+        assert.ok(error instanceof HttpError);
+        assert.equal(error.statusCode, 400);
+        assert.equal(lookedUp, false);
+        return true;
+      },
+    );
   });
 });
