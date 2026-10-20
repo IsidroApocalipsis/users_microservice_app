@@ -2,6 +2,7 @@ import { MongoClient, type Collection } from 'mongodb';
 import { env } from '../config/env.js';
 import {
   userEmailHashIndex,
+  userStatusIndex,
   type UserDocument,
 } from '../users/user.model.js';
 
@@ -26,11 +27,15 @@ async function ensureUserIndexes(
   collection: Collection<UserDocument>,
 ): Promise<void> {
   if (!indexesPromise) {
-    indexesPromise = collection
-      .createIndex(userEmailHashIndex.key, {
+    indexesPromise = Promise.all([
+      collection.createIndex(userEmailHashIndex.key, {
         unique: true,
         name: userEmailHashIndex.name,
-      })
+      }),
+      collection.createIndex(userStatusIndex.key, {
+        name: userStatusIndex.name,
+      }),
+    ])
       .then(() => undefined)
       .catch((error: unknown) => {
         indexesPromise = undefined;

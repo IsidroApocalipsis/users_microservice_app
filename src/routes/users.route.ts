@@ -11,10 +11,20 @@ import {
   findByEmailHash,
   findById,
   insertUser,
+  listUsers,
 } from '../users/user.repository.js';
-import { createUserSchema, type CreateUserInput } from '../users/user.schema.js';
+import {
+  createUserSchema,
+  listUsersQuerySchema,
+  type CreateUserInput,
+} from '../users/user.schema.js';
 
-const userService = createUserService({ findByEmailHash, findById, insertUser });
+const userService = createUserService({
+  findByEmailHash,
+  findById,
+  insertUser,
+  listUsers,
+});
 
 export const usersRouter = Router();
 
@@ -33,6 +43,21 @@ usersRouter.post(
   },
 );
 
+usersRouter.get(
+  '/',
+  requireAuth,
+  requireRole('ADMIN'),
+  async (req, res, next) => {
+    try {
+      const query = listUsersQuerySchema.parse(req.query);
+      const page = await userService.list(query);
+      res.status(200).json(page);
+    } catch (error) {
+      next(error);
+    }
+  },
+);
+
 usersRouter.get('/:id', requireAuth, async (req, res, next) => {
   try {
     const auth = (req as AuthenticatedRequest).auth;
@@ -42,7 +67,8 @@ usersRouter.get('/:id', requireAuth, async (req, res, next) => {
       return;
     }
 
-    const user = await userService.getById(auth, req.params.id);
+    const id = req.params.id;
+    const user = await userService.getById(auth, Array.isArray(id) ? id[0] : id);
     res.status(200).json(user);
   } catch (error) {
     next(error);

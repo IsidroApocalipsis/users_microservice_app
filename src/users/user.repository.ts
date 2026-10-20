@@ -1,6 +1,17 @@
 import { MongoServerError, ObjectId } from 'mongodb';
 import { getUsersCollection } from '../db/client.js';
-import type { UserDocument } from './user.model.js';
+import type { UserDocument, UserStatus } from './user.model.js';
+
+export type UserListQuery = {
+  estatus?: UserStatus;
+  skip: number;
+  limit: number;
+};
+
+export type UserPage = {
+  users: UserDocument[];
+  total: number;
+};
 
 export class DuplicateEmailError extends Error {
   constructor() {
@@ -43,4 +54,24 @@ export async function insertUser(
   }
 
   return user;
+}
+
+function statusFilter(estatus?: UserStatus): { estatus?: UserStatus } {
+  return estatus ? { estatus } : {};
+}
+
+export async function listUsers(query: UserListQuery): Promise<UserPage> {
+  const collection = await getUsersCollection();
+  const filter = statusFilter(query.estatus);
+  const [users, total] = await Promise.all([
+    collection
+      .find(filter)
+      .sort({ createdAt: -1, _id: -1 })
+      .skip(query.skip)
+      .limit(query.limit)
+      .toArray(),
+    collection.countDocuments(filter),
+  ]);
+
+  return { users, total };
 }

@@ -75,6 +75,21 @@ curl -s -X POST http://localhost:3000/users \
 
 Respuesta `201`: el usuario creado, sin `password`. Si no envías `rol`, queda `USER`. Si el email ya existe, responde `409`.
 
+## Listado
+
+Solo `ADMIN`. `page` empieza en 1 y `limit` vale 20 si no los envías. `limit` máximo: 100. `estatus` es opcional.
+
+```bash
+curl -s 'http://localhost:3000/users?page=1&limit=20&estatus=ACTIVO' \
+  -H 'Authorization: Bearer <token>'
+```
+
+Respuesta `200`:
+
+```json
+{ "users": [], "page": 1, "limit": 20, "total": 0 }
+```
+
 ## Consulta por id
 
 Un `ADMIN` puede consultar cualquier usuario. Un `USER` solo el id de su token.

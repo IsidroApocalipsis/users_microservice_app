@@ -44,3 +44,8 @@ export const userEmailHashIndex: IndexDescription = {
   unique: true,
   name: 'users_emailHash_unique',
 };
+
+export const userStatusIndex: IndexDescription = {
+  key: { estatus: 1 },
+  name: 'users_estatus',
+};

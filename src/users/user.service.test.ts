@@ -16,6 +16,7 @@ const { encryptField } = await import('../crypto/encryption.js');
 
 const missingStoreMethods = {
   findById: async () => null,
+  listUsers: async () => ({ users: [], total: 0 }),
 };
 
 const input = {
@@ -90,6 +91,7 @@ describe('get user by id', () => {
   it('returns the decrypted user to the owner', async () => {
     const id = new ObjectId();
     const service = createUserService({
+      ...missingStoreMethods,
       findByEmailHash: async () => null,
       insertUser: async (document) => ({ ...document, _id: new ObjectId() }),
       findById: async () => ({
@@ -121,6 +123,7 @@ describe('get user by id', () => {
   it('returns 403 when a user requests another id', async () => {
     let lookedUp = false;
     const service = createUserService({
+      ...missingStoreMethods,
       findByEmailHash: async () => null,
       insertUser: async (document) => ({ ...document, _id: new ObjectId() }),
       findById: async () => {
@@ -146,6 +149,7 @@ describe('get user by id', () => {
 
   it('returns 404 when the id does not exist', async () => {
     const service = createUserService({
+      ...missingStoreMethods,
       findByEmailHash: async () => null,
       insertUser: async (document) => ({ ...document, _id: new ObjectId() }),
       findById: async () => null,
@@ -167,6 +171,7 @@ describe('get user by id', () => {
 
   it('returns 400 when the id is not an ObjectId', async () => {
     const service = createUserService({
+      ...missingStoreMethods,
       findByEmailHash: async () => null,
       insertUser: async (document) => ({ ...document, _id: new ObjectId() }),
       findById: async () => null,
@@ -180,5 +185,61 @@ describe('get user by id', () => {
         return true;
       },
     );
+  });
+});
+
+describe('list users', () => {
+  it('returns a decrypted page without passwords', async () => {
+    const id = new ObjectId();
+    const service = createUserService({
+      ...missingStoreMethods,
+      findByEmailHash: async () => null,
+      insertUser: async (document) => ({ ...document, _id: new ObjectId() }),
+      listUsers: async () => ({
+        users: [
+          {
+            _id: id,
+            nombre: 'Ana Perez',
+            email: encryptField('ana@example.com'),
+            emailHash: 'hash',
+            telefono: null,
+            curp: null,
+            passwordHash: 'hashed',
+            rol: 'USER',
+            estatus: 'ACTIVO',
+            createdAt: new Date('2026-01-01T00:00:00.000Z'),
+            updatedAt: new Date('2026-01-01T00:00:00.000Z'),
+          },
+        ],
+        total: 1,
+      }),
+    });
+
+    const page = await service.list({ page: 1, limit: 20 });
+
+    assert.equal(page.page, 1);
+    assert.equal(page.limit, 20);
+    assert.equal(page.total, 1);
+    assert.equal(page.users[0]?.email, 'ana@example.com');
+    assert.equal('password' in (page.users[0] ?? {}), false);
+    assert.equal('passwordHash' in (page.users[0] ?? {}), false);
+    assert.equal('emailHash' in (page.users[0] ?? {}), false);
+  });
+
+  it('forwards the status filter and page offset', async () => {
+    let received: { estatus?: string; skip: number; limit: number } | undefined;
+    const service = createUserService({
+      ...missingStoreMethods,
+      findByEmailHash: async () => null,
+      insertUser: async (document) => ({ ...document, _id: new ObjectId() }),
+      listUsers: async (query) => {
+        received = query;
+        return { users: [], total: 0 };
+      },
+    });
+
+    await service.list({ page: 2, limit: 10, estatus: 'ACTIVO' });
+
+    assert.deepEqual(received, { estatus: 'ACTIVO', skip: 10, limit: 10 });
   });
 });

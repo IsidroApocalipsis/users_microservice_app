@@ -33,6 +33,33 @@ const passwordSchema = z.string().min(8).max(72);
 
 const rolSchema = z.enum(USER_ROLES);
 
+function firstQueryValue(value: unknown): unknown {
+  const raw = Array.isArray(value) ? value[0] : value;
+
+  if (raw === undefined || raw === '') {
+    return undefined;
+  }
+
+  return raw;
+}
+
+function queryNumber(fallback: number, min: number, max: number) {
+  return z.preprocess((value) => {
+    const raw = firstQueryValue(value);
+
+    return raw === undefined ? fallback : raw;
+  }, z.coerce.number().int().min(min).max(max));
+}
+
+export const listUsersQuerySchema = z.object({
+  page: queryNumber(1, 1, Number.MAX_SAFE_INTEGER),
+  limit: queryNumber(20, 1, 100),
+  estatus: z.preprocess(
+    firstQueryValue,
+    z.enum(USER_STATUSES).optional(),
+  ),
+});
+
 export const loginUserSchema = z.object({
   email: emailSchema,
   password: passwordSchema,
@@ -57,6 +84,7 @@ export const updateUserSchema = z.object({
   estatus: z.enum(USER_STATUSES).optional(),
 });
 
+export type ListUsersQuery = z.infer<typeof listUsersQuerySchema>;
 export type LoginUserInput = z.infer<typeof loginUserSchema>;
 export type CreateUserInput = z.infer<typeof createUserSchema>;
 export type UpdateUserInput = z.infer<typeof updateUserSchema>;
