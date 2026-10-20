@@ -33,6 +33,11 @@ const passwordSchema = z.string().min(8).max(72);
 
 const rolSchema = z.enum(USER_ROLES);
 
+export const loginUserSchema = z.object({
+  email: emailSchema,
+  password: passwordSchema,
+});
+
 export const createUserSchema = z.object({
   nombre: nombreSchema,
   email: emailSchema,
@@ -52,5 +57,6 @@ export const updateUserSchema = z.object({
   estatus: z.enum(USER_STATUSES).optional(),
 });
 
+export type LoginUserInput = z.infer<typeof loginUserSchema>;
 export type CreateUserInput = z.infer<typeof createUserSchema>;
 export type UpdateUserInput = z.infer<typeof updateUserSchema>;
