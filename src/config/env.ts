@@ -20,7 +20,22 @@ function readPort(value: string | undefined): number {
   return port;
 }
 
+function readDataEncryptionKey(value: string | undefined): Buffer {
+  if (!value) {
+    throw new Error('DATA_ENCRYPTION_KEY is required');
+  }
+
+  const key = Buffer.from(value, 'base64');
+
+  if (key.length !== 32) {
+    throw new Error('DATA_ENCRYPTION_KEY must decode to 32 bytes');
+  }
+
+  return key;
+}
+
 export const env = {
   port: readPort(process.env.PORT),
   nodeEnv: readNodeEnv(process.env.NODE_ENV),
+  dataEncryptionKey: readDataEncryptionKey(process.env.DATA_ENCRYPTION_KEY),
 };
