@@ -34,8 +34,29 @@ function readDataEncryptionKey(value: string | undefined): Buffer {
   return key;
 }
 
+function readRequired(name: string, value: string | undefined): string {
+  if (!value) {
+    throw new Error(`${name} is required`);
+  }
+
+  return value;
+}
+
+function readJwtSecret(value: string | undefined): string {
+  const secret = readRequired('JWT_SECRET', value);
+
+  if (secret.length < 32) {
+    throw new Error('JWT_SECRET must be at least 32 characters');
+  }
+
+  return secret;
+}
+
 export const env = {
   port: readPort(process.env.PORT),
   nodeEnv: readNodeEnv(process.env.NODE_ENV),
   dataEncryptionKey: readDataEncryptionKey(process.env.DATA_ENCRYPTION_KEY),
+  mongodbUri: readRequired('MONGODB_URI', process.env.MONGODB_URI),
+  jwtSecret: readJwtSecret(process.env.JWT_SECRET),
+  jwtExpiresIn: process.env.JWT_EXPIRES_IN || '1h',
 };

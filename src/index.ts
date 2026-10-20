@@ -1,5 +1,8 @@
 import { createApp } from './app.js';
 import { env } from './config/env.js';
+import { connectToDatabase } from './db/client.js';
+
+await connectToDatabase();
 
 const app = createApp();
 
