@@ -62,6 +62,30 @@ Respuesta:
 
 El token incluye `sub` y `rol`, y vence según `JWT_EXPIRES_IN`.
 
+## Alta de usuario
+
+Requiere un token de `ADMIN` en `Authorization: Bearer <token>`.
+
+```bash
+curl -s -X POST http://localhost:3000/users \
+  -H 'Content-Type: application/json' \
+  -H 'Authorization: Bearer <token>' \
+  -d '{"nombre":"Ana Perez","email":"ana@example.com","password":"secret123"}'
+```
+
+Respuesta `201`: el usuario creado, sin `password`. Si no envías `rol`, queda `USER`. Si el email ya existe, responde `409`.
+
+## Consulta por id
+
+Un `ADMIN` puede consultar cualquier usuario. Un `USER` solo el id de su token.
+
+```bash
+curl -s http://localhost:3000/users/<id> \
+  -H 'Authorization: Bearer <token>'
+```
+
+Respuesta `200`: los datos descifrados, sin `password`. Si el id no existe, responde `404`. Si un usuario pide el id de otra persona, responde `403`.
+
 ## Health check
 
 ```bash
