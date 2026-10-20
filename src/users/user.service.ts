@@ -1,9 +1,8 @@
 import { ObjectId } from 'mongodb';
-import type { AccessTokenPayload } from '../auth/token.js';
 import { hashEmail } from '../crypto/encryption.js';
 import { HttpError } from '../middlewares/http-error.js';
 import { toPublicUser, toUserChanges, toUserDocument } from './user.mapper.js';
-import type { PublicUser, UserDocument, UserUpdate } from './user.model.js';
+import type { PublicUser, UserDocument, UserRole, UserUpdate } from './user.model.js';
 import {
   DuplicateEmailError,
   type UserListQuery,
@@ -24,6 +23,12 @@ export type UserStore = {
   insertUser(document: Omit<UserDocument, '_id'>): Promise<UserDocument>;
   listUsers(query: UserListQuery): Promise<UserPage>;
   updateUser(id: string, changes: UserUpdate): Promise<UserDocument | null>;
+  revokeSessions(userId: string): Promise<void>;
+};
+
+type Actor = {
+  sub: string;
+  rol: UserRole;
 };
 
 export function createUserService(users: UserStore) {
@@ -47,7 +52,7 @@ export function createUserService(users: UserStore) {
       }
     },
 
-    async getById(actor: AccessTokenPayload, id: string): Promise<PublicUser> {
+    async getById(actor: Actor, id: string): Promise<PublicUser> {
       if (actor.rol !== 'ADMIN' && actor.sub !== id) {
         throw new HttpError(403, 'Forbidden');
       }
@@ -81,7 +86,7 @@ export function createUserService(users: UserStore) {
     },
 
     async update(
-      actor: AccessTokenPayload,
+      actor: Actor,
       id: string,
       input: UpdateUserInput,
     ): Promise<PublicUser> {
@@ -118,6 +123,14 @@ export function createUserService(users: UserStore) {
           throw new HttpError(404, 'User not found');
         }
 
+        if (
+          input.password !== undefined ||
+          input.rol !== undefined ||
+          input.estatus === 'INACTIVO'
+        ) {
+          await users.revokeSessions(updated._id.toHexString());
+        }
+
         return toPublicUser(updated);
       } catch (error) {
         if (error instanceof DuplicateEmailError) {
@@ -140,6 +153,7 @@ export function createUserService(users: UserStore) {
       }
 
       if (current.estatus === 'INACTIVO') {
+        await users.revokeSessions(id);
         return toPublicUser(current);
       }
 
@@ -151,6 +165,8 @@ export function createUserService(users: UserStore) {
       if (!updated) {
         throw new HttpError(404, 'User not found');
       }
+
+      await users.revokeSessions(id);
 
       return toPublicUser(updated);
     },

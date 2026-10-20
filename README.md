@@ -14,7 +14,7 @@ npm install
 cp .env.example .env
 ```
 
-Completa en `.env` `DATA_ENCRYPTION_KEY`, `MONGODB_URI` y `JWT_SECRET`. Sin esas variables el proceso no arranca. `JWT_EXPIRES_IN` vale `1h` si no la defines. Si omites `PORT`, el servidor usa `3000`.
+Completa en `.env` `DATA_ENCRYPTION_KEY`, `MONGODB_URI` y `JWT_SECRET`. Sin esas variables el proceso no arranca. `JWT_EXPIRES_IN` vale `1h` si no la defines. `JWT_REFRESH_EXPIRES_IN` vale `7d`. Si omites `PORT`, el servidor usa `3000`.
 
 ## Scripts
 
@@ -64,13 +64,25 @@ curl -s -X POST http://localhost:3000/auth/login \
   -d '{"email":"ana@example.com","password":"secret123"}'
 ```
 
-Respuesta:
+Respuesta `200`:
 
 ```json
-{ "accessToken": "<jwt>" }
+{ "accessToken": "<jwt>", "refreshToken": "<token>", "expiresIn": "1h" }
 ```
 
-El token incluye `sub` y `rol`, y vence según `JWT_EXPIRES_IN`.
+El access token incluye `sub`, `rol` y `sid`, y vence según `JWT_EXPIRES_IN`. El refresh token es un valor aleatorio que el cliente debe guardar; en la base solo se almacena su hash. Cada login abre una sesión nueva.
+
+## Renovar y cerrar sesión
+
+`POST /auth/refresh` y `POST /auth/logout` son públicos. Reciben el refresh token. Refresh rota el token y devuelve un par nuevo; el anterior deja de servir. Logout revoca esa sesión y responde `204`. Si el token ya no es válido, logout responde igual y refresh responde `401`.
+
+```bash
+curl -s -X POST http://localhost:3000/auth/refresh \
+  -H 'Content-Type: application/json' \
+  -d '{"refreshToken":"<token>"}'
+```
+
+Cada petición autenticada comprueba que la sesión siga vigente. Una baja, un cambio de contraseña, un cambio de rol o pasar a `INACTIVO` revoca todas las sesiones de ese usuario, así que un access token ya emitido deja de servir.
 
 ## Alta de usuario
 
@@ -128,7 +140,7 @@ Respuesta `200`: el usuario actualizado, sin `password`. Si el email pertenece a
 
 ## Baja
 
-Solo `ADMIN`. La baja es lógica: el documento no se borra y `estatus` pasa a `INACTIVO`. El login de ese usuario responde `403`. El `emailHash` sigue ocupado, así que ese email no se puede volver a registrar. Un `ADMIN` puede reactivarlo con `PATCH` y `"estatus":"ACTIVO"`.
+Solo `ADMIN`. La baja es lógica: el documento no se borra y `estatus` pasa a `INACTIVO`. El login de ese usuario responde `403` y sus sesiones quedan revocadas. El `emailHash` sigue ocupado, así que ese email no se puede volver a registrar. Un `ADMIN` puede reactivarlo con `PATCH` y `"estatus":"ACTIVO"`.
 
 ```bash
 curl -s -X DELETE http://localhost:3000/users/<id> \

@@ -1,4 +1,10 @@
 import { MongoClient, type Collection } from 'mongodb';
+import {
+  sessionExpiryIndex,
+  sessionRefreshTokenIndex,
+  sessionUserIndex,
+  type SessionDocument,
+} from '../auth/session.model.js';
 import { env } from '../config/env.js';
 import {
   userEmailHashIndex,
@@ -7,9 +13,11 @@ import {
 } from '../users/user.model.js';
 
 const USERS_COLLECTION = 'users';
+const SESSIONS_COLLECTION = 'sessions';
 
 let clientPromise: Promise<MongoClient> | undefined;
-let indexesPromise: Promise<void> | undefined;
+let userIndexesPromise: Promise<void> | undefined;
+let sessionIndexesPromise: Promise<void> | undefined;
 
 export function getMongoClient(): Promise<MongoClient> {
   if (!clientPromise) {
@@ -26,8 +34,8 @@ export function getMongoClient(): Promise<MongoClient> {
 async function ensureUserIndexes(
   collection: Collection<UserDocument>,
 ): Promise<void> {
-  if (!indexesPromise) {
-    indexesPromise = Promise.all([
+  if (!userIndexesPromise) {
+    userIndexesPromise = Promise.all([
       collection.createIndex(userEmailHashIndex.key, {
         unique: true,
         name: userEmailHashIndex.name,
@@ -38,12 +46,39 @@ async function ensureUserIndexes(
     ])
       .then(() => undefined)
       .catch((error: unknown) => {
-        indexesPromise = undefined;
+        userIndexesPromise = undefined;
         throw error;
       });
   }
 
-  await indexesPromise;
+  await userIndexesPromise;
+}
+
+async function ensureSessionIndexes(
+  collection: Collection<SessionDocument>,
+): Promise<void> {
+  if (!sessionIndexesPromise) {
+    sessionIndexesPromise = Promise.all([
+      collection.createIndex(sessionUserIndex.key, {
+        name: sessionUserIndex.name,
+      }),
+      collection.createIndex(sessionExpiryIndex.key, {
+        name: sessionExpiryIndex.name,
+        expireAfterSeconds: sessionExpiryIndex.expireAfterSeconds,
+      }),
+      collection.createIndex(sessionRefreshTokenIndex.key, {
+        unique: true,
+        name: sessionRefreshTokenIndex.name,
+      }),
+    ])
+      .then(() => undefined)
+      .catch((error: unknown) => {
+        sessionIndexesPromise = undefined;
+        throw error;
+      });
+  }
+
+  await sessionIndexesPromise;
 }
 
 export async function getUsersCollection(): Promise<Collection<UserDocument>> {
@@ -55,6 +90,15 @@ export async function getUsersCollection(): Promise<Collection<UserDocument>> {
   return collection;
 }
 
+export async function getSessionsCollection(): Promise<Collection<SessionDocument>> {
+  const client = await getMongoClient();
+  const collection = client.db().collection<SessionDocument>(SESSIONS_COLLECTION);
+
+  await ensureSessionIndexes(collection);
+
+  return collection;
+}
+
 export async function connectToDatabase(): Promise<void> {
-  await getUsersCollection();
+  await Promise.all([getUsersCollection(), getSessionsCollection()]);
 }

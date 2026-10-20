@@ -52,6 +52,38 @@ function readJwtSecret(value: string | undefined): string {
   return secret;
 }
 
+const DURATION_PATTERN = /^(\d+)([smhd])$/;
+
+const DURATION_MS = {
+  s: 1000,
+  m: 60_000,
+  h: 3_600_000,
+  d: 86_400_000,
+} as const;
+
+function readRefreshExpiresIn(value: string | undefined): string {
+  const duration = value || '7d';
+
+  if (!DURATION_PATTERN.test(duration)) {
+    throw new Error('JWT_REFRESH_EXPIRES_IN must be a duration like 15m, 1h, or 7d');
+  }
+
+  return duration;
+}
+
+export function refreshTokenTtlMs(duration: string): number {
+  const match = DURATION_PATTERN.exec(duration);
+
+  if (!match) {
+    throw new Error('JWT_REFRESH_EXPIRES_IN must be a duration like 15m, 1h, or 7d');
+  }
+
+  const amount = Number(match[1]);
+  const unit = match[2] as keyof typeof DURATION_MS;
+
+  return amount * DURATION_MS[unit];
+}
+
 export const env = {
   port: readPort(process.env.PORT),
   nodeEnv: readNodeEnv(process.env.NODE_ENV),
@@ -59,4 +91,5 @@ export const env = {
   mongodbUri: readRequired('MONGODB_URI', process.env.MONGODB_URI),
   jwtSecret: readJwtSecret(process.env.JWT_SECRET),
   jwtExpiresIn: process.env.JWT_EXPIRES_IN || '1h',
+  jwtRefreshExpiresIn: readRefreshExpiresIn(process.env.JWT_REFRESH_EXPIRES_IN),
 };

@@ -1,4 +1,5 @@
 import { Router } from 'express';
+import { revokeSessionsByUserId } from '../auth/session.repository.js';
 import { HttpError } from '../middlewares/http-error.js';
 import {
   requireAuth,
@@ -28,6 +29,7 @@ const userService = createUserService({
   insertUser,
   listUsers,
   updateUser,
+  revokeSessions: revokeSessionsByUserId,
 });
 
 export const usersRouter = Router();

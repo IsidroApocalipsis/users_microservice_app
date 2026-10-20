@@ -19,6 +19,7 @@ const missingStoreMethods = {
   findById: async () => null,
   listUsers: async () => ({ users: [], total: 0 }),
   updateUser: async () => null,
+  revokeSessions: async () => undefined,
 };
 
 function storedUser(overrides: Partial<UserDocument> = {}): UserDocument {
@@ -607,5 +608,67 @@ describe('deactivate user', () => {
         return true;
       },
     );
+  });
+});
+
+describe('session revocation', () => {
+  it('revokes sessions when an active user is deactivated', async () => {
+    const current = storedUser();
+    let revokedId = '';
+    const service = createUserService({
+      ...missingStoreMethods,
+      findByEmailHash: async () => null,
+      insertUser: async (document) => ({ ...document, _id: new ObjectId() }),
+      findById: async () => current,
+      updateUser: async (_id, changes) => ({ ...current, ...changes }),
+      revokeSessions: async (userId) => {
+        revokedId = userId;
+      },
+    });
+
+    await service.deactivate(current._id.toHexString());
+
+    assert.equal(revokedId, current._id.toHexString());
+  });
+
+  it('revokes sessions when the user is already inactive', async () => {
+    const current = storedUser({ estatus: 'INACTIVO' });
+    let revoked = false;
+    const service = createUserService({
+      ...missingStoreMethods,
+      findByEmailHash: async () => null,
+      insertUser: async (document) => ({ ...document, _id: new ObjectId() }),
+      findById: async () => current,
+      revokeSessions: async () => {
+        revoked = true;
+      },
+    });
+
+    await service.deactivate(current._id.toHexString());
+
+    assert.equal(revoked, true);
+  });
+
+  it('revokes sessions when the password, role, or status changes', async () => {
+    const current = storedUser();
+    const revoked: string[] = [];
+    const service = createUserService({
+      ...missingStoreMethods,
+      findByEmailHash: async () => null,
+      insertUser: async (document) => ({ ...document, _id: new ObjectId() }),
+      findById: async () => current,
+      updateUser: async (_id, changes) => ({ ...current, ...changes }),
+      revokeSessions: async () => {
+        revoked.push('revoked');
+      },
+    });
+    const actor = { sub: new ObjectId().toHexString(), rol: 'ADMIN' as const };
+
+    await service.update(actor, current._id.toHexString(), { nombre: 'Ana Lopez' });
+    await service.update(actor, current._id.toHexString(), { password: 'nueva1234' });
+    await service.update(actor, current._id.toHexString(), { rol: 'ADMIN' });
+    await service.update(actor, current._id.toHexString(), { estatus: 'INACTIVO' });
+
+    assert.deepEqual(revoked, ['revoked', 'revoked', 'revoked']);
   });
 });

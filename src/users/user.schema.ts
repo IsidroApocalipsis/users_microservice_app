@@ -65,6 +65,10 @@ export const loginUserSchema = z.object({
   password: passwordSchema,
 });
 
+export const refreshTokenSchema = z.object({
+  refreshToken: z.string().min(1),
+});
+
 export const createUserSchema = z.object({
   nombre: nombreSchema,
   email: emailSchema,
@@ -111,5 +115,6 @@ export const updateUserSchema = z
 
 export type ListUsersQuery = z.infer<typeof listUsersQuerySchema>;
 export type LoginUserInput = z.infer<typeof loginUserSchema>;
+export type RefreshTokenInput = z.infer<typeof refreshTokenSchema>;
 export type CreateUserInput = z.infer<typeof createUserSchema>;
 export type UpdateUserInput = z.infer<typeof updateUserSchema>;
